@@ -1,3 +1,4 @@
+import re
 import sys
 import json
 import os
@@ -12,10 +13,13 @@ import cmath
 import math
 from translator import Translator
 from mywindow import Ui_MainWindow
+from wolframclient.evaluation import WolframLanguageSession
+from wolframclient.language import wl, wlexpr
 
 class Animation(QPushButton):
     def __init__(self, text, parent=None):
         super().__init__(text, parent)
+
         self.opacity_effect = QGraphicsOpacityEffect(self)
         self.setGraphicsEffect(self.opacity_effect)
         self.opacity_animation = QPropertyAnimation(self.opacity_effect, b"opacity")
@@ -40,9 +44,11 @@ class Root(QMainWindow):
         self.ui = Ui_MainWindow()
         self.ui.setupUi(self)
         self.translator = Translator()
+
         self.languages = {}
         self.bts = [self.ui.b_i, self.ui.b_plus, self.ui.b_minus, self.ui.rt]
-        self.reg = QRegularExpression("-?([1-9][0-9]*|0|([1-9][0-9]*).[0-9][0-9]*)[+-]?([1-9][0-9]*|0|([1-9][0-9]*).[0-9][0-9]*)?j?$")
+        #self.reg = QRegularExpression("/^(-|\+)?([1-9][0-9]*|0|([1-9][0-9]*).[0-9][0-9]*)[+-]?([1-9][0-9]*|0|([1-9][0-9]*).[0-9][0-9]*)?j$/gm")
+        self.reg = '^-?[^+,-][^+,-]*[+,-]?[^+,-]*$'
         self.reg2 = QRegularExpression("(?:[1-9]|1[0-9]|20)$")
         getcontext().prec = 50
         self.mode = self.ui.comboBox.currentText()
@@ -63,9 +69,9 @@ class Root(QMainWindow):
         self.ui.root_8.clicked.connect(lambda: self.clear())
         self.ui.root.clicked.connect(lambda: self.root())
         self.ui.root_9.clicked.connect(lambda: self.dell())
-        self.ui.root_2.clicked.connect(lambda: self.change_of_scene(self.bts))
+        self.ui.rt.clicked.connect(lambda: self.add_digit('j'))
         self.ui.root_7.clicked.connect(lambda: self.find_and_trans())
-        self.ui.rt.clicked.connect(lambda: self.change_of_scene2())
+        self.ui.root_2.clicked.connect(lambda: self.add_dot())
         self.ui.comboBox.currentIndexChanged.connect(lambda: self.change_of_scene(self.bts))
         self.ui.comboBox_3.currentIndexChanged.connect(lambda: self.translate(self.ui.comboBox_3.currentText()))
         #validator = QRegularExpressionValidator(self.reg, self.lineEdit)
@@ -80,7 +86,7 @@ class Root(QMainWindow):
 
 
     def change_of_scene(self,bts: list) -> None:
-        if self.ui.comboBox.currentText()=='Complex':
+        if self.ui.comboBox.currentIndex()==1:
             for button in range(len(bts)):
                 self.ui.gridLayout.addWidget(bts[button],button,4)
                 self.mode = self.ui.comboBox.currentText()
@@ -99,6 +105,7 @@ class Root(QMainWindow):
         self.ui.rt.setParent(None)
 
     def add_digit(self, btn_text: str) -> None:
+
         if self.ui.lineEdit.text() == '0':
             self.ui.lineEdit.setText(btn_text)
         else:
@@ -108,9 +115,14 @@ class Root(QMainWindow):
         if self.ui.lineEdit.text() == '0':
             self.ui.lineEdit.setText('0.')
             return
-        if '.' not in self.ui.lineEdit.text():
+        if self.ui.comboBox.currentIndex()==0:
+            if '.' not in self.ui.lineEdit.text():
 
-         self.ui.lineEdit.setText(self.ui.lineEdit.text() + '.')
+             self.ui.lineEdit.setText(self.ui.lineEdit.text() + '.')
+        else:
+            if  self.ui.lineEdit.text().count('.')<2:
+                self.ui.lineEdit.setText(self.ui.lineEdit.text() + '.')
+
 
 
     def clear(self)-> None:
@@ -118,15 +130,35 @@ class Root(QMainWindow):
         self.ui.label.clear()
 
     def root(self) -> None:
+        st = self.ui.lineEdit.text().replace('±', '').replace('(','').replace(')','')
         self.ui.label.setText(self.ui.lineEdit.text())
         if self.ui.comboBox_2.currentText()=='':
             self.ui.comboBox_2.setCurrentText('7')
-        if self.mode == 'Real':
+        if self.ui.lineEdit.text()=='±':
+            self.ui.lineEdit.setText('0')
+        elif self.ui.lineEdit.text().replace('+','').replace('-','').replace('.','')=='0' :
+            self.ui.lineEdit.setText('0')
+        elif self.mode == 'Real':
+
             #self.ui.lineEdit.setText(str(round(math.sqrt(float(self.ui.lineEdit.text())),int(self.ui.comboBox_2.currentText()))))
-            self.ui.lineEdit.setText(str((Decimal(numpy.sqrt(Decimal(self.ui.lineEdit.text())))).quantize(Decimal('1.'+'0'*int(self.ui.comboBox_2.currentText())), rounding=ROUND_DOWN)))
+
+
+            s = '±'+str((Decimal(numpy.sqrt(Decimal(st)))).quantize(Decimal('1.'+'0'*int(self.ui.comboBox_2.currentText())), rounding=ROUND_DOWN))
+            self.ui.lineEdit.setText(s)
         else:
-            temp = cmath.sqrt(complex(self.ui.lineEdit.text()))
-            self.ui.lineEdit.setText(f'{(round(temp.real,int(self.ui.comboBox_2.currentText())))}+{(round(temp.imag,int(self.ui.comboBox_2.currentText())))}j'.replace('+-','-'))
+            try:
+                temp = cmath.sqrt(complex(eval(st)))
+                if re.match(r'^-?[^+,-][^+,-]*[+,-]?[^+,-]*$',st):
+
+                    self.ui.lineEdit.setText(
+                        f'±({(round(temp.real, int(self.ui.comboBox_2.currentText())))}+{(round(temp.imag, int(self.ui.comboBox_2.currentText())))}j)'.replace(
+                            '+-', '-'))
+                else: self.ui.lineEdit.setText('0')
+
+            except Exception:
+                self.ui.lineEdit.setText('0')
+
+
     def dell(self) -> None:
         k = len(self.ui.lineEdit.text())
         if self.ui.lineEdit.text() == '0':
